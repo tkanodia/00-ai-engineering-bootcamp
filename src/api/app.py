@@ -60,3 +60,8 @@ def chat(
     result = run_llm(payload.provider, payload.model_name, payload.messages)
 
     return ChatResponse(message=result)
+
+@app.get("/")
+async def root():
+    """Root endpoint that returns a welcome message"""
+    return {"message": "Hello API"}
