@@ -1,27 +1,27 @@
 services:
-  # streamlit-app:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.streamlit
-  #   ports:
-  #     - 8501:8501
-  #   env_file:
-  #     - .env
-  #   restart: unless-stopped
-  #   volumes:
-  #     - ./src/chatbot_ui:/app/src/chatbot_ui
+  streamlit-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    ports:
+      - 8501:8501
+    env_file:
+      - .env
+    restart: unless-stopped
+    volumes:
+      - ./src/chatbot_ui:/app/src/chatbot_ui
 
-  # api:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.fastapi
-  #   ports:
-  #     - 8000:8000
-  #   env_file:
-  #     - .env
-  #   restart: unless-stopped
-  #   volumes:
-  #     - ./src/api:/app/src/api
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.fastapi
+    ports:
+      - 8000:8000
+    env_file:
+      - .env
+    restart: unless-stopped
+    volumes:
+      - ./src/api:/app/src/api
   
   qdrant:
     image: qdrant/qdrant

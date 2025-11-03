@@ -209,3 +209,6 @@ __marimo__/
 
 # data files
 data/
+
+# Qdrant storage
+qdrant_storage/

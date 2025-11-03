@@ -1,25 +1,19 @@
 import streamlit as st
 import requests
+import logging
 
 from core.config import config
 
-## Lets create a sidebar with a dropdown for the model list and providers
-with st.sidebar:
-    st.title("Settings")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-    #Dropdown for model
-    provider = st.selectbox("Provider", ["OpenAI", "Groq", "Google"])
-    if provider == "OpenAI":
-        model_name = st.selectbox("Model", ["gpt-4o-mini", "gpt-4o"])
-    elif provider == "Groq":
-        model_name = st.selectbox("Model", ["llama-3.3-70b-versatile"])
-    else:
-        model_name = st.selectbox("Model", ["gemini-2.0-flash"])
 
-    # Save provider and model to session state
-    st.session_state.provider = provider
-    st.session_state.model_name = model_name
-
+st.set_page_config(
+    page_title="AI Shopping Assistant", 
+    page_icon=":shopping_bag:",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 def api_call(method, url, **kwargs):
 
@@ -57,6 +51,24 @@ def api_call(method, url, **kwargs):
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": "Hello! How can I assist you today?"}]
 
+if "used_context" not in st.session_state:
+    st.session_state.used_context = []
+
+with st.sidebar:
+    suggestions_tab, = st.tabs(["Suggestions"])
+
+    with suggestions_tab:
+        if st.session_state.used_context:
+            for idx, item in enumerate(st.session_state.used_context):
+                st.caption(item.get("description", "No description available"))
+                if "image_url" in item:
+                    st.image(item["image_url"], width=250)
+                if "price" in item:
+                    st.write(f'Price: {item["price"]} USD' if item.get("price") not in [None, ""] else "Price: N/A")
+                st.divider()
+        else:
+            st.write("No suggestions available")
+
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
@@ -67,8 +79,11 @@ if prompt := st.chat_input("Hello! How can I assist you today?"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        output = api_call("post", f"{config.API_URL}/chat", json={"provider": st.session_state.provider, "model_name": st.session_state.model_name, "messages": st.session_state.messages})
-        response_data = output[1]
-        answer = response_data["message"]
+        status, output = api_call("post", f"{config.API_URL}/rag", json={"query": prompt})
+        answer = output["answer"]
+        used_context = output["used_context"]
+        st.session_state.used_context = used_context
+
         st.write(answer)
     st.session_state.messages.append({"role": "assistant", "content": answer})
+    st.rerun()

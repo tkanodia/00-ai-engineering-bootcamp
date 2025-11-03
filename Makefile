@@ -4,3 +4,7 @@ run-docker-compose:
 
 clean-notebook-outputs:
 	jupyter nbconvert --clear-output --inplace notebooks/*/*.ipynb
+
+run-evals:
+	uv sync
+	PYTHONPATH=${PWD}/src:$$PYTHONPATH:${PWD} uv run --env-file .env python -m evals.eval_retrievers
