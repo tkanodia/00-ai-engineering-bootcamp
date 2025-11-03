@@ -11,7 +11,7 @@ import numpy as np
 
 from api.api.models import RAGGenerationResponseWithReferences
 
-from api.api.rag.utils.prompt_management import build_prompt_from_yaml, prompt_template_config
+from api.api.agent.utils.prompt_management import build_prompt_from_yaml, prompt_template_config
 
 import cohere
 

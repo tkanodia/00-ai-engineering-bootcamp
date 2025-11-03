@@ -1,4 +1,4 @@
-from api.api.rag.retrieval_generation import rag_pipeline
+from api.api.agent.retrieval_generation import rag_pipeline
 
 from langsmith import Client
 from qdrant_client import QdrantClient
