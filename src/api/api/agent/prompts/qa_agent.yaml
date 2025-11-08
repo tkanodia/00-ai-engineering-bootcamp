@@ -42,6 +42,16 @@ prompts:
         }
     }
 
+    - Get formatted user reviews:
+    {
+        "name": "get_formatted_reviews_context",
+        "arguments": {
+            "query": "Good quality.",
+            "items_ids": ["B09WCFC5D9", "B0CF1WM24K"],
+            "top_k": 5
+        }
+    }
+
     CRITICAL RULES:
     - If tool_calls has values, final_answer MUST be false
     (You cannot call tools and exit the graph in the same response)
@@ -51,7 +61,8 @@ prompts:
     tool_calls=[...], final_answer=false
     - After receiving tool results, you can then set:
     tool_calls=[], final_answer=true
-    - Use names specificly provided in the available tools. Don't add any additional text to the names.
+    - Use names specificly provided in the available tools. Don't add any additional text to the names. You can only use get_formatted_item_context or get_formatted_reviews_context for tool names.
+
 
     Instructions:
     - You need to answer the question based on the outputs from the tools using the available tools only.
@@ -60,6 +71,7 @@ prompts:
     - If multiple tool calls can be used at once to answer the question, suggest all of them.
     - Do not explain your next steps in the answer, instead use tools to answer the question.
     - Never use word context and refer to it as the available products.
+    - If using reviews data, make sure to match reviews to item IDs and summarise them instead of returning them as is, clearly split reviews from general item specification.
     - You should only answer questions about the products in stock. If the question is not about the products in stock, you should ask for clarification.
     - As an output you need to return the following:
 

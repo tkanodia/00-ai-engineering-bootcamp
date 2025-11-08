@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 class RAGRequest(BaseModel):
     query: str = Field(..., description="The query to use for the RAG pipeline")
-
+    thread_id: str = Field(..., description="The thread id to use for the RAG pipeline")
 class RAGUsedContext(BaseModel):
     image_url: str = Field(..., description="The image url of the item used to answer the question")
     price: Optional[float] = Field(..., description="The price of the item used to answer the question")

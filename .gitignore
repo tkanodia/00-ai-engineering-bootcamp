@@ -212,3 +212,6 @@ data/
 
 # Qdrant storage
 qdrant_storage/
+
+# Postgres storage
+postgres_data/
