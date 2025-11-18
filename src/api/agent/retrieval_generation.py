@@ -9,9 +9,9 @@ from qdrant_client.models import Filter, FieldCondition, MatchValue, Prefetch, F
 
 import numpy as np
 
-from api.api.models import RAGGenerationResponseWithReferences
+from api.models import RAGGenerationResponseWithReferences
 
-from api.api.agent.utils.prompt_management import build_prompt_from_yaml, prompt_template_config
+from api.agent.utils.prompt_management import build_prompt_from_yaml, prompt_template_config
 
 import cohere
 
@@ -101,7 +101,7 @@ def format_retrieved_context(context_data):
 def create_prompt(query, preprocessed_retrieved_context):
     # processed_context = format_retrieved_context(preprocessed_retrieved_context)
 
-    prompt = prompt_template_config("src/api/api/rag/prompts/retrieval_generation.yaml", "retrieval_generation")
+    prompt = prompt_template_config("src/api/agent/prompts/retrieval_generation.yaml", "retrieval_generation")
     rendered_prompt = prompt.render(query=query, preprocessed_retrieved_context=preprocessed_retrieved_context)
     return rendered_prompt
 

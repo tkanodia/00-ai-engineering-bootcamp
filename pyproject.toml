@@ -27,4 +27,6 @@ dependencies = [
     "psycopg2-binary>=2.9.11",
     "langgraph-checkpoint-postgres>=3.0.1",
     "psycopg[binary]>=3.2.12",
+    "fastmcp==2.12.0",
+    "beartype==0.20.0"
 ]

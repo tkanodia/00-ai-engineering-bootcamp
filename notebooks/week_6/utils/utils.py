@@ -5,7 +5,22 @@ from langchain_core.messages import ToolCall
 from operator import add
 import ast
 import inspect
-from api.api.agent.models import AgentResponse, ToolCall
+
+class AgentResponse(BaseModel):
+    answer: str
+    tool_calls: List[ToolCall] = Field(default_factory=list)
+
+class ToolCall(BaseModel):
+    name: str
+    arguments: dict
+
+class State(BaseModel):
+    messages: Annotated[List[Any], add] = [] # list of llm messages history, Annotated is used to add metadata to the field instead of overriding the default value - maintains the history of messages
+    message: str = "" # user query
+    iteration: int = 0 # number of iterations
+    answer: str = "" # answer to the user query
+    available_tools: List[Dict[str, Any]] = [] # list of tools available to use
+    tool_calls: List[ToolCall] = [] # list of tool calls to use
 
 def format_ai_message(response: AgentResponse):
     """Format the AI response into a LangChain AIMessage object"""
