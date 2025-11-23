@@ -23,11 +23,22 @@ class AgentProperties(BaseModel):
     available_tools: List[Dict[str, Any]] = []
     tool_calls: List[ToolCall] = []
 
+class Delegation(BaseModel):
+    agent: str
+    task: str
+
+class CoordinatorAgentProperties(BaseModel):
+    iteration: int = 0
+    final_answer: bool = False
+    plan: List[Delegation] = []
+    next_agent: str = ""
+
 class State(BaseModel):
     messages: Annotated[List[Any], add] = []
     user_intent: str = ""
     product_qa_agent: AgentProperties = Field(default_factory=AgentProperties)
     shopping_cart_agent: AgentProperties = Field(default_factory=AgentProperties)
+    coordinator_agent: CoordinatorAgentProperties = Field(default_factory=CoordinatorAgentProperties)
     answer: str = ""
     references: Annotated[List[RAGUsedContext], add] = []
     user_id: str = ""
@@ -42,3 +53,9 @@ class ShoppingCartAgentResponse(BaseModel):
     answer: str = Field(description="Answer to the question.")
     final_answer: bool = False
     tool_calls: List[ToolCall] = []
+
+class CoordinatorAgentResponse(BaseModel):
+    next_agent: str
+    plan: List[Delegation]
+    final_answer: bool
+    answer: str

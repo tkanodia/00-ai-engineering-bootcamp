@@ -1,9 +1,8 @@
 from langsmith import traceable, get_current_run_tree
 from langchain_core.messages import convert_to_openai_messages, AIMessage
 from openai import OpenAI
-from jinja2 import Template 
 from api.agent.utils.utils import format_ai_message
-from api.agent.models import State, ProductQAAgentResponse, IntentRouterResponse, ShoppingCartAgentResponse   
+from api.agent.models import State, ProductQAAgentResponse, ShoppingCartAgentResponse, CoordinatorAgentResponse   
 import instructor
 from api.agent.utils.prompt_management import prompt_template_config
 
@@ -59,13 +58,13 @@ def product_qa_agent(state: State) -> dict:
    }
 
 @traceable(
-    name="agent_node",
+    name="coordinator_agent",
     run_type="llm",
-    metadata={"ls_provider": "openai", "ls_model_name": "gpt-4.1-mini"}
+    metadata={"ls_provider": "openai", "ls_model_name": "gpt-4.1"}
 )
-def intent_router_node(state: State):
+def coordinator_agent(state):
 
-    prompt_template = prompt_template_config("src/api/agent/prompts/intent_router_agent.yaml", "intent_router_agent")
+    prompt_template = prompt_template_config("src/api/agent/prompts/coordinator_agent.yaml", "coordinator_agent")
     
     prompt = prompt_template.render()
 
@@ -79,18 +78,18 @@ def intent_router_node(state: State):
     client = instructor.from_openai(OpenAI())
 
     response, raw_response = client.chat.completions.create_with_completion(
-            model="gpt-4.1-mini",
-            response_model=IntentRouterResponse,
+            model="gpt-4.1",
+            response_model=CoordinatorAgentResponse,
             messages=[{"role": "system", "content": prompt}, *conversation],
             temperature=0,
     )
 
-    if response.user_intent == "product_qa":
-      ai_message = []
-    else:
+    if response.final_answer:
         ai_message = [AIMessage(
             content=response.answer,
         )]
+    else:
+        ai_message = []
 
     current_run = get_current_run_tree()
     if current_run:
@@ -103,11 +102,69 @@ def intent_router_node(state: State):
         # get the trace_id from the current run - in intent router as this function always executes for our graph
         trace_id = str(getattr(current_run, "trace_id", current_run.id))
 
+
     return {
-      "messages": ai_message,
-      "user_intent": response.user_intent,
-      "answer": response.answer
-      }
+        "messages": ai_message,
+        "answer": response.answer,
+        "coordinator_agent": {
+            "iteration": state.coordinator_agent.iteration + 1,
+            "final_answer": response.final_answer,
+            "next_agent": response.next_agent,
+            "plan": [data.model_dump() for data in response.plan]
+        },
+        "trace_id": trace_id
+   }
+
+# @traceable(
+#     name="agent_node",
+#     run_type="llm",
+#     metadata={"ls_provider": "openai", "ls_model_name": "gpt-4.1-mini"}
+# )
+# def intent_router_node(state: State):
+
+#     prompt_template = prompt_template_config("src/api/agent/prompts/intent_router_agent.yaml", "intent_router_agent")
+    
+#     prompt = prompt_template.render()
+
+#     messages = state.messages
+
+#     conversation = []
+
+#     for message in messages:
+#             conversation.append(convert_to_openai_messages(message))
+
+#     client = instructor.from_openai(OpenAI())
+
+#     response, raw_response = client.chat.completions.create_with_completion(
+#             model="gpt-4.1-mini",
+#             response_model=IntentRouterResponse,
+#             messages=[{"role": "system", "content": prompt}, *conversation],
+#             temperature=0,
+#     )
+
+#     if response.user_intent == "product_qa":
+#       ai_message = []
+#     else:
+#         ai_message = [AIMessage(
+#             content=response.answer,
+#         )]
+
+#     current_run = get_current_run_tree()
+#     if current_run:
+#         current_run.metadata["usage_metadata"] = {
+#             "input_tokens": raw_response.usage.prompt_tokens,
+#             "output_tokens": raw_response.usage.completion_tokens,
+#             "total_tokens": raw_response.usage.total_tokens
+#         }
+
+#         # get the trace_id from the current run - in intent router as this function always executes for our graph
+#         trace_id = str(getattr(current_run, "trace_id", current_run.id))
+
+#     return {
+#       "messages": ai_message,
+#       "user_intent": response.user_intent,
+#       "answer": response.answer
+#       }
 
 
 @traceable(

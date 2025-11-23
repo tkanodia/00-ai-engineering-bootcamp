@@ -1,15 +1,13 @@
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from api.agent.tools import get_formatted_item_context, get_formatted_reviews_context
-from api.agent.agents import product_qa_agent, shopping_cart_agent, intent_router_node
 from api.agent.tools import add_to_shopping_cart, remove_from_cart, get_shopping_cart
 from qdrant_client import QdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 from langgraph.checkpoint.postgres import PostgresSaver
 import json
 import numpy as np
-from api.agent.agents import product_qa_agent, shopping_cart_agent, intent_router_node
-from api.agent.tools import add_to_shopping_cart, remove_from_cart, get_shopping_cart
+from api.agent.agents import product_qa_agent, shopping_cart_agent, coordinator_agent
 from api.agent.models import State
 from api.agent.utils.utils import get_tool_descriptions
 
@@ -39,12 +37,16 @@ def shopping_cart_agent_tool_router(state) -> str:
     else:
         return "end"
 
-def user_intent_router(state) -> str:
+def coordinator_router(state) -> str:
     """Decide whether to continue or end"""
     
-    if state.user_intent == "product_qa":
+    if state.coordinator_agent.iteration > 3:
+        return "end"
+    elif state.coordinator_agent.final_answer and len(state.coordinator_agent.plan) == 0:
+        return "end"
+    elif state.coordinator_agent.next_agent == "product_qa_agent":
         return "product_qa_agent"
-    elif state.user_intent == "shopping_cart":
+    elif state.coordinator_agent.next_agent == "shopping_cart_agent":
         return "shopping_cart_agent"
     else:
         return "end"
@@ -64,16 +66,16 @@ shopping_cart_agent_tool_descriptions = get_tool_descriptions(shopping_cart_agen
 
 workflow.add_node("product_qa_agent", product_qa_agent)
 workflow.add_node("shopping_cart_agent", shopping_cart_agent)
-workflow.add_node("intent_router", intent_router_node)
+workflow.add_node("coordinator_agent", coordinator_agent)
 
 workflow.add_node("product_qa_agent_tool_node", product_qa_agent_tool_node)
 workflow.add_node("shopping_cart_agent_tool_node", shopping_cart_agent_tool_node)
 
-workflow.add_edge(START, "intent_router")
+workflow.add_edge(START, "coordinator_agent")
 
 workflow.add_conditional_edges(
-    "intent_router",
-    user_intent_router,
+    "coordinator_agent",
+    coordinator_router,
     {
         "product_qa_agent": "product_qa_agent",
         "shopping_cart_agent": "shopping_cart_agent",
@@ -86,7 +88,7 @@ workflow.add_conditional_edges(
     product_qa_agent_tool_router,
     {
         "tools": "product_qa_agent_tool_node",
-        "end": END
+        "end": "coordinator_agent"
     }
 )
 
@@ -95,12 +97,13 @@ workflow.add_conditional_edges(
     shopping_cart_agent_tool_router,
     {
         "tools": "shopping_cart_agent_tool_node",
-        "end": END
+        "end": "coordinator_agent"
     }
 )
 
 workflow.add_edge("product_qa_agent_tool_node", "product_qa_agent")
 workflow.add_edge("shopping_cart_agent_tool_node", "shopping_cart_agent")
+
 
 
 # Why do we need this edge?
