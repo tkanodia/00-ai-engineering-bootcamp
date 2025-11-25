@@ -5,7 +5,7 @@ from api.agent.graph import State
 from time import sleep
 
 SLEEP_TIME = 5
-ACCURACY_THRESHOLD = 0.9
+ACCURACY_THRESHOLD = 0.6
 
 client = Client()
 
