@@ -33,7 +33,7 @@ jobs:
     - name: Run evaluations
       id: run-evals
       env:
-        LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+        LANGCHAIN_API_KEY: ${{ secrets.LANGCHAIN_API_KEY }}
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}
