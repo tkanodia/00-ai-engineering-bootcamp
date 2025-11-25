@@ -1,7 +1,10 @@
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional, Type
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 import ast
 import inspect
+import instructor
+from litellm import completion
+from api.agent.utils.prompt_management import prompt_template_config
 
 def filter_messages_for_coordinator(messages):
     """
@@ -227,3 +230,62 @@ def get_tool_descriptions(function_list):
             descriptions.append(result)
     
     return descriptions if descriptions else "Could not extract tool descriptions"
+
+
+# This function is used to create chat completions with instructor and litellm
+
+
+def chat_completions(
+    conversation: list, 
+    prompt_path: str,
+    response_model: Type[Any],
+    prompt_params: Optional[Dict[str, Any]] = {},
+    agent_tools: Optional[List[Dict[str, Any]]] = [],
+    models: List[str] = ["gpt-4.1", "groq/llama-3.3-70b-versatile"] 
+) -> tuple[Any, Any]:
+    """
+    Create chat completions with instructor and litellm
+    
+    Args:
+        model: List of model names for litellm router
+        prompt_path: Path to the prompt template
+        response_model: Pydantic model for structured output
+        messages: List of chat messages
+        response_model: Pydantic model for structured output
+        
+    Returns:
+        Tuple of (parsed_response, raw_response)
+    """
+    # Create instructor client from litellm
+    client = instructor.from_litellm(completion)
+    
+    response = None
+    raw_response = None
+    last_error = None
+    
+    for model in models:
+        try:
+            # Load model-specific prompt from YAML (uses model name as key)
+            prompt_template = prompt_template_config(prompt_path, model, model=model)
+            # Render the template to get the final prompt string
+            prompt = prompt_template.render(
+                available_tools=agent_tools,
+                **prompt_params
+            )
+            response, raw_response = client.chat.completions.create_with_completion(
+                model=model,
+                messages=[{"role": "system", "content": prompt}, *conversation],
+                response_model=response_model,
+                temperature=0
+            )
+            break  # Success, exit loop
+        except Exception as e:
+            print(f"Error with model {model}: {e}")
+            last_error = e
+            continue
+    
+    # If all models failed, raise error
+    if response is None or raw_response is None:
+        raise RuntimeError(f"All models failed. Last error: {last_error}")
+    
+    return response, raw_response
