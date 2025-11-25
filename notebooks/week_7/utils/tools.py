@@ -1,8 +1,7 @@
-from langsmith import traceable, get_current_run_tree
-import openai
 from qdrant_client import QdrantClient
 from qdrant_client.models import Prefetch, Document, FusionQuery, Filter, FieldCondition, MatchAny, MatchValue
-from langchain_openai import OpenAIEmbeddings
+from langsmith import traceable, get_current_run_tree
+import openai
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import numpy as np
@@ -30,17 +29,17 @@ def get_embedding(text, model="text-embedding-3-small"):
     return response.data[0].embedding
 
 
-### retreival tool
+#### Item Retrieval Tool
 
 @traceable(
-    name="retrieve_data",
+    name="retrieve_item_data",
     run_type="retriever"
 )
 def retrieve_item_data(query, k=5):
 
     query_embedding = get_embedding(query)
 
-    qdrant_client = QdrantClient(url="http://qdrant:6333")
+    qdrant_client = QdrantClient(url="http://localhost:6333")
 
     results = qdrant_client.query_points(
         collection_name="Amazon-items-collection-hybrid-search",
@@ -83,7 +82,7 @@ def retrieve_item_data(query, k=5):
 
 
 @traceable(
-    name="format_retrieved_context",
+    name="format_retrieved_item_context",
     run_type="prompt"
 )
 def process_item_context(context):
@@ -114,18 +113,17 @@ def get_formatted_item_context(query: str, top_k: int = 5) -> str:
     return formatted_context
 
 
-
-### reviewsretreival tool
+#### Reviews Retrieval Tool
 
 @traceable(
     name="retrieve_reviews_data",
     run_type="retriever"
 )
-def retrieve_reviews_data(query, items_ids, k=5):
+def retrieve_reviews_data(query, item_list, k=5):
 
     query_embedding = get_embedding(query)
 
-    qdrant_client = QdrantClient(url="http://qdrant:6333")
+    qdrant_client = QdrantClient(url="http://localhost:6333")
 
     results = qdrant_client.query_points(
         collection_name="Amazon-items-collection-reviews",
@@ -137,7 +135,7 @@ def retrieve_reviews_data(query, items_ids, k=5):
                         FieldCondition(
                             key="parent_asin",
                             match=MatchAny(
-                                any=items_ids
+                                any=item_list
                             )
                         )
                     ]
@@ -149,18 +147,18 @@ def retrieve_reviews_data(query, items_ids, k=5):
         limit=k
     )
 
-    retrieved_reviews_context_ids = []
-    retrieved_reviews_context = []
+    retrieved_context_ids = []
+    retrieved_context = []
     similarity_scores = []
 
     for result in results.points:
-        retrieved_reviews_context_ids.append(result.payload["parent_asin"])
-        retrieved_reviews_context.append(result.payload["text"])
+        retrieved_context_ids.append(result.payload["parent_asin"])
+        retrieved_context.append(result.payload["text"])
         similarity_scores.append(result.score)
 
     return {
-        "retrieved_reviews_context_ids": retrieved_reviews_context_ids,
-        "retrieved_reviews_context": retrieved_reviews_context,
+        "retrieved_context_ids": retrieved_context_ids,
+        "retrieved_context": retrieved_context,
         "similarity_scores": similarity_scores,
     }
 
@@ -173,13 +171,13 @@ def process_reviews_context(context):
 
     formatted_context = ""
 
-    for id, chunk in zip(context["retrieved_reviews_context_ids"], context["retrieved_reviews_context"]):
-        formatted_context += f"- ID: {id}, text: {chunk}\n"
+    for id, chunk in zip(context["retrieved_context_ids"], context["retrieved_context"]):
+        formatted_context += f"- ID: {id}, review: {chunk}\n"
 
     return formatted_context
 
 
-def get_formatted_reviews_context(query: str, items_ids: list[str], top_k: int = 5) -> str:
+def get_formatted_reviews_context(query: str, item_list: list, top_k: int = 5) -> str:
 
     """Get the top k reviews matching a query for a list of prefiltered items.
     
@@ -192,7 +190,7 @@ def get_formatted_reviews_context(query: str, items_ids: list[str], top_k: int =
         A string of the top k context chunks with IDs prepending each chunk, each representing a review for a given inventory item for a given query.
     """
 
-    context = retrieve_reviews_data(query, items_ids, top_k)
+    context = retrieve_reviews_data(query, item_list, top_k)
     formatted_context = process_reviews_context(context)
 
     return formatted_context
@@ -220,8 +218,8 @@ def add_to_shopping_cart(items: list[dict], user_id: str, cart_id: str) -> str:
     """
 
     conn = psycopg2.connect(
-        host="postgres",
-        port=5432,
+        host="localhost",
+        port=5433,
         database="langgraph_db",
         user="langgraph_user",
         password="langgraph_password"
@@ -234,7 +232,7 @@ def add_to_shopping_cart(items: list[dict], user_id: str, cart_id: str) -> str:
             product_id = item['product_id']
             quantity = item['quantity']
 
-            qdrant_client = QdrantClient(url="http://qdrant:6333")
+            qdrant_client = QdrantClient(url="http://localhost:6333")
 
             dummy_vector = np.zeros(1536).tolist()
             payload = qdrant_client.query_points(
@@ -323,8 +321,8 @@ def get_shopping_cart(user_id: str, cart_id: str) -> list[dict]:
     """
     
     conn = psycopg2.connect(
-        host="postgres",
-        port=5432,
+        host="localhost",
+        port=5433,
         database="langgraph_db",
         user="langgraph_user",
         password="langgraph_password"
@@ -368,8 +366,8 @@ def remove_from_cart(product_id: str, user_id: str, cart_id: str) -> str:
     """
     
     conn = psycopg2.connect(
-        host="postgres",
-        port=5432,
+        host="localhost",
+        port=5433,
         database="langgraph_db",
         user="langgraph_user",
         password="langgraph_password"
@@ -385,8 +383,6 @@ def remove_from_cart(product_id: str, user_id: str, cart_id: str) -> str:
         cursor.execute(query, (user_id, cart_id, product_id))
 
         return cursor.rowcount > 0
-
-
 
 
 #### Warehouse Availability Check Tool
@@ -411,8 +407,8 @@ def check_warehouse_availability(items: list[dict]) -> dict:
     """
     
     conn = psycopg2.connect(
-        host="postgres",
-        port=5432,
+        host="localhost",
+        port=5433,
         database="langgraph_db",
         user="langgraph_user",
         password="langgraph_password"
@@ -556,8 +552,8 @@ def reserve_warehouse_items(reservations: list[dict]) -> dict:
     """
     
     conn = psycopg2.connect(
-        host="postgres",
-        port=5432,
+        host="localhost",
+        port=5433,
         database="langgraph_db",
         user="langgraph_user",
         password="langgraph_password"

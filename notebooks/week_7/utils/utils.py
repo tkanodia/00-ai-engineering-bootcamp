@@ -1,64 +1,35 @@
-from typing import Dict, Any
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from pydantic import BaseModel, Field
+from typing import List, Dict, Any, Annotated
+from langchain_core.messages import AIMessage
+from langchain_core.messages import ToolCall
+from operator import add
 import ast
 import inspect
 
-def filter_messages_for_coordinator(messages):
-    """
-    Filter conversation messages for the coordinator agent.
-    The coordinator doesn't use tools, so we need to remove tool-related messages
-    or convert AI messages with tool_calls to simple text messages.
-    
-    This prevents OpenAI API errors about tool_calls without responses.
-    """
-    filtered_messages = []
-    
-    for message in messages:
-        # Keep user/human messages as-is
-        if isinstance(message, dict) and message.get("role") == "user":
-            filtered_messages.append(message)
-        elif hasattr(message, "__class__") and message.__class__.__name__ == "HumanMessage":
-            filtered_messages.append(message)
-        # Skip tool messages entirely
-        elif isinstance(message, dict) and message.get("role") == "tool":
-            continue
-        elif hasattr(message, "__class__") and message.__class__.__name__ == "ToolMessage":
-            continue
-        # For assistant messages, strip tool_calls
-        elif isinstance(message, dict) and message.get("role") == "assistant":
-            # Create a clean assistant message without tool_calls
-            clean_message = {
-                "role": "assistant",
-                "content": message.get("content", "")
-            }
-            # Only add if there's actual content
-            if clean_message["content"]:
-                filtered_messages.append(clean_message)
-        elif hasattr(message, "__class__") and message.__class__.__name__ == "AIMessage":
-            # Convert AIMessage to dict without tool_calls
-            if message.content:
-                filtered_messages.append({
-                    "role": "assistant",
-                    "content": message.content
-                })
-        else:
-            # Keep other message types
-            filtered_messages.append(message)
-    
-    return filtered_messages
+class AgentResponse(BaseModel):
+    answer: str
+    tool_calls: List[ToolCall] = Field(default_factory=list)
 
-def format_ai_message(response):
+class ToolCall(BaseModel):
+    name: str
+    arguments: dict
+
+class State(BaseModel):
+    messages: Annotated[List[Any], add] = [] # list of llm messages history, Annotated is used to add metadata to the field instead of overriding the default value - maintains the history of messages
+    message: str = "" # user query
+    iteration: int = 0 # number of iterations
+    answer: str = "" # answer to the user query
+    available_tools: List[Dict[str, Any]] = [] # list of tools available to use
+    tool_calls: List[ToolCall] = [] # list of tool calls to use
+
+def format_ai_message(response: AgentResponse):
     """Format the AI response into a LangChain AIMessage object"""
     if response.tool_calls:
         tool_calls = []
         for i, tc in enumerate(response.tool_calls):
-            # Sanitize tool name to only allow alphanumeric, underscore, and hyphen
-            # This prevents OpenAI API errors for invalid function names
-            sanitized_name = ''.join(c for c in tc.name if c.isalnum() or c in ('_', '-'))
-            
             tool_calls.append({
                 "id": f"call_{i}",
-                "name": sanitized_name,
+                "name": tc.name,
                 "args": tc.arguments
             })
         

@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Annotated
+from pydantic import BaseModel, Field, field_validator
+from typing import List, Dict, Any, Annotated, Literal
 from operator import add
 
 class ToolCall(BaseModel):
@@ -38,6 +38,7 @@ class State(BaseModel):
     user_intent: str = ""
     product_qa_agent: AgentProperties = Field(default_factory=AgentProperties)
     shopping_cart_agent: AgentProperties = Field(default_factory=AgentProperties)
+    warehouse_manager_agent: AgentProperties = Field(default_factory=AgentProperties)
     coordinator_agent: CoordinatorAgentProperties = Field(default_factory=CoordinatorAgentProperties)
     answer: str = ""
     references: Annotated[List[RAGUsedContext], add] = []
@@ -55,7 +56,26 @@ class ShoppingCartAgentResponse(BaseModel):
     tool_calls: List[ToolCall] = []
 
 class CoordinatorAgentResponse(BaseModel):
-    next_agent: str
+    next_agent: Literal["product_qa_agent", "shopping_cart_agent", "warehouse_manager_agent", ""] = Field(
+        description="The name of the next agent to invoke. Must be one of: product_qa_agent, shopping_cart_agent, warehouse_manager_agent, or empty string '' when final_answer is true."
+    )
     plan: List[Delegation]
     final_answer: bool
     answer: str
+    
+    @field_validator('next_agent')
+    @classmethod
+    def validate_next_agent(cls, v):
+        """Ensure next_agent is a valid agent name, not OpenAI's internal tool names"""
+        valid_agents = ["product_qa_agent", "shopping_cart_agent", "warehouse_manager_agent", ""]
+        
+        # If we get something like 'multi_tool_use.parallel', default to empty string
+        if v not in valid_agents:
+            return ""
+        
+        return v
+
+class WarehouseManagerAgentResponse(BaseModel):
+    answer: str = Field(description="Answer to the question.")
+    final_answer: bool = False
+    tool_calls: List[ToolCall] = []

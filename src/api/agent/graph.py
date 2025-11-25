@@ -2,12 +2,13 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 from api.agent.tools import get_formatted_item_context, get_formatted_reviews_context
 from api.agent.tools import add_to_shopping_cart, remove_from_cart, get_shopping_cart
+from api.agent.tools import check_warehouse_availability, reserve_warehouse_items
 from qdrant_client import QdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 from langgraph.checkpoint.postgres import PostgresSaver
 import json
 import numpy as np
-from api.agent.agents import product_qa_agent, shopping_cart_agent, coordinator_agent
+from api.agent.agents import product_qa_agent, shopping_cart_agent, coordinator_agent, warehouse_manager_agent
 from api.agent.models import State
 from api.agent.utils.utils import get_tool_descriptions
 
@@ -40,19 +41,39 @@ def shopping_cart_agent_tool_router(state) -> str:
 def coordinator_router(state) -> str:
     """Decide whether to continue or end"""
     
-    if state.coordinator_agent.iteration > 3:
+    # Safety check: prevent infinite loops (reduced from 10 to 6 for faster failure)
+    if state.coordinator_agent.iteration > 6:
+        print(f"WARNING: Coordinator hit iteration limit ({state.coordinator_agent.iteration}). Forcing end.")
         return "end"
-    elif state.coordinator_agent.final_answer and len(state.coordinator_agent.plan) == 0:
+    
+    # If coordinator says it has the final answer, end the workflow
+    if state.coordinator_agent.final_answer:
         return "end"
-    elif state.coordinator_agent.next_agent == "product_qa_agent":
+    
+    # Route to the next agent as specified by coordinator
+    if state.coordinator_agent.next_agent == "product_qa_agent":
         return "product_qa_agent"
     elif state.coordinator_agent.next_agent == "shopping_cart_agent":
         return "shopping_cart_agent"
+    elif state.coordinator_agent.next_agent == "warehouse_manager_agent":
+        return "warehouse_manager_agent"
+    else:
+        # If no valid agent is specified and no final answer, end to prevent loops
+        return "end"
+
+def warehouse_manager_agent_tool_router(state) -> str:
+    """Decide whether to continue or end"""
+    
+    if state.warehouse_manager_agent.final_answer:
+        return "end"
+    elif state.warehouse_manager_agent.iteration > 2:
+        return "end"
+    elif len(state.warehouse_manager_agent.tool_calls) > 0:
+        return "tools"
     else:
         return "end"
 
 ### Workflow
-
 
 workflow = StateGraph(State)
 
@@ -64,12 +85,18 @@ shopping_cart_agent_tools = [add_to_shopping_cart, remove_from_cart, get_shoppin
 shopping_cart_agent_tool_node = ToolNode(shopping_cart_agent_tools)
 shopping_cart_agent_tool_descriptions = get_tool_descriptions(shopping_cart_agent_tools)
 
+warehouse_manager_agent_tools = [check_warehouse_availability, reserve_warehouse_items]
+warehouse_manager_agent_tool_node = ToolNode(warehouse_manager_agent_tools)
+warehouse_manager_agent_tool_descriptions = get_tool_descriptions(warehouse_manager_agent_tools)
+
 workflow.add_node("product_qa_agent", product_qa_agent)
 workflow.add_node("shopping_cart_agent", shopping_cart_agent)
+workflow.add_node("warehouse_manager_agent", warehouse_manager_agent)
 workflow.add_node("coordinator_agent", coordinator_agent)
 
 workflow.add_node("product_qa_agent_tool_node", product_qa_agent_tool_node)
 workflow.add_node("shopping_cart_agent_tool_node", shopping_cart_agent_tool_node)
+workflow.add_node("warehouse_manager_agent_tool_node", warehouse_manager_agent_tool_node)
 
 workflow.add_edge(START, "coordinator_agent")
 
@@ -79,6 +106,7 @@ workflow.add_conditional_edges(
     {
         "product_qa_agent": "product_qa_agent",
         "shopping_cart_agent": "shopping_cart_agent",
+        "warehouse_manager_agent": "warehouse_manager_agent",
         "end": END
     }
 )
@@ -101,10 +129,18 @@ workflow.add_conditional_edges(
     }
 )
 
+workflow.add_conditional_edges(
+    "warehouse_manager_agent",
+    warehouse_manager_agent_tool_router,
+    {
+        "tools": "warehouse_manager_agent_tool_node",
+        "end": "coordinator_agent"
+    }
+)
+
 workflow.add_edge("product_qa_agent_tool_node", "product_qa_agent")
 workflow.add_edge("shopping_cart_agent_tool_node", "shopping_cart_agent")
-
-
+workflow.add_edge("warehouse_manager_agent_tool_node", "warehouse_manager_agent")
 
 # Why do we need this edge?
 # This edge routes the flow from the 'tool_node' (where the tool output is computed) back to the 'agent_node',
@@ -220,6 +256,12 @@ def run_agent_stream_wrapper(question: str, thread_id: str):
             "plan": [],
             "next_agent": ""
         },
+        "warehouse_manager_agent": {
+            "iteration": 0,
+            "final_answer": False,
+            "available_tools": warehouse_manager_agent_tool_descriptions,
+            "tool_calls": []
+        },
         "user_id": thread_id,
         "cart_id": thread_id
     }
@@ -227,7 +269,12 @@ def run_agent_stream_wrapper(question: str, thread_id: str):
     # thread id should come from frontend as user could have multiple conversations with the agent
     # we are using thread id as user id and cart id - just for the sake of simplicity
 
-    config = {"configurable": {"thread_id": thread_id}}
+    config = {
+        "configurable": {
+            "thread_id": thread_id
+        },
+        "recursion_limit": 50  # Increased from default 25 to handle complex multi-agent workflows
+    }
 
     with PostgresSaver.from_conn_string("postgresql://langgraph_user:langgraph_password@postgres:5432/langgraph_db") as checkpointer:
 
